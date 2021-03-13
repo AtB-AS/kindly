@@ -264,6 +264,26 @@ func (c *Client) ChatSessions(ctx context.Context, f *Filter) ([]*CountByDate, e
 	return ret, nil
 }
 
+type ChatLabel struct {
+	Count int    `json:"count"`
+	ID    string `json:"label_id"`
+	Text  string `json:"label_text"`
+}
+
+func (c *Client) ChatLabels(ctx context.Context, f *Filter) ([]*ChatLabel, error) {
+	req, err := c.newRequest(ctx, "chatlabels/added", f.Query())
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]*ChatLabel, 0)
+	if err := c.do(req, &ret); err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
 func (c *Client) newRequest(ctx context.Context, endpoint string, query url.Values) (*http.Request, error) {
 	if c.BaseURL == "" {
 		c.BaseURL = BaseURL
