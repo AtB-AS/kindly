@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/atb-as/kindly"
@@ -279,10 +278,22 @@ func (c *Client) newRequest(ctx context.Context, endpoint string, query url.Valu
 	return req, nil
 }
 
-var (
-	errStatus      = fmt.Errorf("errenous status code")
-	errContentType = fmt.Errorf("unexpected content type")
-)
+type Error struct {
+	statusCode int
+	body       []byte
+}
+
+func (e *Error) StatusCode() int {
+	return e.statusCode
+}
+
+func (e *Error) Body() []byte {
+	return e.body
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("statistics: errenous status code %d", e.statusCode)
+}
 
 func (c *Client) do(r *http.Request, v interface{}) error {
 	if c.Doer == nil {
@@ -301,12 +312,7 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 			return err
 		}
 
-		return fmt.Errorf("%w: %d (body: %s)", errStatus, resp.StatusCode, body)
-	}
-
-	ct := resp.Header.Get("Content-Type")
-	if !strings.HasPrefix(ct, "application/json") {
-		return fmt.Errorf("%w: %q", errContentType, ct)
+		return &Error{statusCode: resp.StatusCode, body: body}
 	}
 
 	w := responseWrapper{}
