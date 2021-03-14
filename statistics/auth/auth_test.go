@@ -1,4 +1,4 @@
-package auth
+package auth_test
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/torfjor/kindly/statistics/auth"
 )
 
 func TestApiKeyTokenSource_Token(t *testing.T) {
@@ -31,7 +33,7 @@ func TestApiKeyTokenSource_Token(t *testing.T) {
 			w.Write(j)
 		}))
 
-		src := TokenSource{
+		src := auth.TokenSource{
 			APIKey:   "key",
 			TokenURL: srv.URL,
 		}
@@ -52,26 +54,26 @@ func TestApiKeyTokenSource_Token(t *testing.T) {
 	t.Run("InternalServerError", func(t *testing.T) {
 		srv := newTestSrv(http.StatusInternalServerError, nil)
 
-		src := TokenSource{
+		src := auth.TokenSource{
 			TokenURL: srv.URL,
 		}
 
 		if _, err := src.Token(); err == nil {
 			t.Errorf("expected err, got nil")
-		} else if !errors.Is(err, ErrRetrieveToken) {
+		} else if !errors.Is(err, auth.ErrRetrieveToken) {
 			t.Errorf("expected err to wrap ErrRetrieveToken")
 		}
 	})
 	t.Run("Unauthorized", func(t *testing.T) {
 		srv := newTestSrv(http.StatusUnauthorized, nil)
 
-		src := TokenSource{
+		src := auth.TokenSource{
 			TokenURL: srv.URL,
 		}
 
 		if _, err := src.Token(); err == nil {
 			t.Errorf("expected err, got nil")
-		} else if !errors.Is(err, ErrRetrieveToken) {
+		} else if !errors.Is(err, auth.ErrRetrieveToken) {
 			t.Errorf("expected err to wrap ErrRetrieveToken")
 		}
 	})

@@ -1,84 +1,61 @@
-package statistics
+package statistics_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/torfjor/kindly/statistics"
 )
 
-func TestClient_NewRequest(t *testing.T) {
+type doerFunc func(r *http.Request) (*http.Response, error)
+
+func (d doerFunc) Do(r *http.Request) (*http.Response, error) {
+	return d(r)
+}
+
+func TestClient_Doer(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
-		f := Filter{
+		botID := "123"
+		f := statistics.Filter{
 			From: time.Date(2021, 2, 1, 0, 0, 0, 0, time.UTC),
 			To:   time.Date(2021, 2, 2, 0, 0, 0, 0, time.UTC),
 		}
-		c := Client{
-			BotID: "123",
+		c := statistics.Client{
+			Doer: doerFunc(func(r *http.Request) (*http.Response, error) {
+				wantURL := fmt.Sprintf("%s/%s/chatlabels/added?from=2021-02-01&to=2021-02-02", statistics.BaseURL, botID)
+				if r.URL.String() != wantURL {
+					t.Errorf("got URL %q, want %q", r.URL.String(), wantURL)
+				}
+
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader([]byte("{\"data\":[]}")))}, nil
+			}),
+			BotID: botID,
 		}
-
-		req, err := c.newRequest(context.Background(), "test", f.Query())
-		if err != nil {
-			t.Errorf("newRequest() err=%v", err)
-		}
-
-		wantURL := fmt.Sprintf("%s/%s/test?from=2021-02-01&to=2021-02-02", BaseURL, c.BotID)
-		if req.URL.String() != wantURL {
-			t.Errorf("got URL %q, want %q", req.URL.String(), wantURL)
-		}
-	})
-}
-
-func TestClient_Do(t *testing.T) {
-	t.Run("OK", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			accept := r.Header.Get("accept")
-			if accept != "application/json" {
-				t.Errorf("got Accept: %q, want %q", accept, "application/json")
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("{\"data\":{}}"))
-		}))
-
-		c := Client{
-			BotID:   "test",
-			BaseURL: srv.URL,
-			Doer:    srv.Client(),
-		}
-
-		req, err := c.newRequest(context.Background(), "test", nil)
-		if err != nil {
-			t.Errorf("newRequest err=%v", err)
-		}
-
-		err = c.do(req, nil)
-		if err != nil {
-			t.Errorf("do err=%v", err)
+		if _, err := c.ChatLabels(context.Background(), &f); err != nil {
+			t.Errorf("c.ChatLabels() err=%v", err)
 		}
 	})
-	t.Run("InternalServerError", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("{\"data\":{}}"))
-		}))
-
-		c := Client{
-			BotID:   "test",
-			BaseURL: srv.URL,
-			Doer:    srv.Client(),
+	t.Run("Internal server error", func(t *testing.T) {
+		c := statistics.Client{
+			Doer: doerFunc(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusInternalServerError, Body: ioutil.NopCloser(strings.NewReader(""))}, nil
+			}),
 		}
 
-		req, err := c.newRequest(context.Background(), "test", nil)
-		if err != nil {
-			t.Errorf("newRequest err=%v", err)
-		}
-
-		err = c.do(req, nil)
-		if err == nil {
-			t.Errorf("got err=%v, expected nil", err)
+		if _, err := c.ChatLabels(context.Background(), nil); err == nil {
+			t.Errorf("expected err, got err=%v", err)
+		} else if _, ok := err.(interface {
+			Body() []byte
+			StatusCode() int
+		}); !ok {
+			t.Errorf("expected err to implement Bodyer and StatusCoder")
 		}
 	})
 }
