@@ -7,6 +7,7 @@ Serves CSV from the kindly.ai Statistics API for easy consumption in Power BI.
 ### Endpoints
 * `/labels`: Triggered chat labels.
 * `/messages`: User messages.
+* `/pages`: Page statistics.
 * `/sessions`: User sessions.
 
 #### Query parameters:

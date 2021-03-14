@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/atb-as/kindly/statistics"
+	"github.com/gorilla/mux"
 )
 
 func NewServer(client *statistics.Client) http.Handler {
@@ -18,6 +18,7 @@ func NewServer(client *statistics.Client) http.Handler {
 
 	m.HandleFunc("/labels", newLabelsHandler(client))
 	m.HandleFunc("/messages", newMessagesHandler(client))
+	m.HandleFunc("/pages", newPagesHandler(client))
 	m.HandleFunc("/sessions", newSessionsHandler(client))
 
 	return m
@@ -76,6 +77,37 @@ func newMessagesHandler(mr messageReader) http.HandlerFunc {
 		cw.Write([]string{"date", "count"})
 		for _, message := range messages {
 			cw.Write([]string{message.Date.Format("2006-01-02"), strconv.Itoa(message.Count)})
+		}
+		cw.Flush()
+
+		if err := cw.Error(); err != nil {
+			log.Printf("cw.Error() err=%v", err)
+		}
+	}
+}
+
+type pagesReader interface {
+	PageStatistics(ctx context.Context, f *statistics.Filter) ([]*statistics.PageStatistic, error)
+}
+
+func newPagesHandler(pr pagesReader) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		filter, err := filterFromRequest(r)
+		if err != nil {
+			respondErr(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		pages, err := pr.PageStatistics(r.Context(), filter)
+		if err != nil {
+			respondErr(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		cw := newCSVWriter(w)
+		cw.Write([]string{"host", "path", "sessions", "messages"})
+		for _, page := range pages {
+			cw.Write([]string{page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages)})
 		}
 		cw.Flush()
 
