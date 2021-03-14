@@ -1,4 +1,4 @@
-module github.com/torfjor/kindly
+module github.com/atb-as/kindly
 
 go 1.15
 

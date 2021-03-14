@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/torfjor/kindly/statistics"
+	"github.com/atb-as/kindly/statistics"
 )
 
 var (

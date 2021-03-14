@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/torfjor/kindly/statistics"
+	"github.com/atb-as/kindly/statistics"
 )
 
 func NewServer(client *statistics.Client) http.Handler {

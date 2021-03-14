@@ -9,9 +9,9 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/torfjor/kindly/cmd/frontendcsv/server"
-	"github.com/torfjor/kindly/statistics"
-	"github.com/torfjor/kindly/statistics/auth"
+	"github.com/atb-as/kindly/cmd/frontendcsv/server"
+	"github.com/atb-as/kindly/statistics"
+	"github.com/atb-as/kindly/statistics/auth"
 	"golang.org/x/oauth2"
 )
 

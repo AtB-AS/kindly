@@ -6,8 +6,8 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/torfjor/kindly/statistics"
-	"github.com/torfjor/kindly/statistics/auth"
+	"github.com/atb-as/kindly/statistics"
+	"github.com/atb-as/kindly/statistics/auth"
 )
 
 func init() {

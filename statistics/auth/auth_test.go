@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/torfjor/kindly/statistics/auth"
+	"github.com/atb-as/kindly/statistics/auth"
 )
 
 func TestApiKeyTokenSource_Token(t *testing.T) {

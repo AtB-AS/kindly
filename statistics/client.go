@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/torfjor/kindly"
+	"github.com/atb-as/kindly"
 )
 
 const BaseURL = "https://sage.kindly.ai/api/v1/stats/bot"

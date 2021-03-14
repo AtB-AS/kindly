@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/torfjor/kindly/statistics"
+	"github.com/atb-as/kindly/statistics"
 )
 
 type doerFunc func(r *http.Request) (*http.Response, error)
