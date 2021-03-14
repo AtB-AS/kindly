@@ -4,12 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
-	"time"
 
-	"github.com/atb-as/kindly/cmd/frontendcsv/server"
+	"github.com/atb-as/kindly/cmd/frontendcsv/http"
 	"github.com/atb-as/kindly/statistics"
 	"github.com/atb-as/kindly/statistics/auth"
 	"golang.org/x/oauth2"
@@ -49,19 +47,11 @@ func run(ctx context.Context, config *config) error {
 		})),
 	}
 
-	srv := http.Server{
-		Addr:         ":" + config.listenPort,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  30 * time.Second,
-		Handler:      server.NewServer(client),
-	}
+	srv := http.NewServer(client, config.listenPort)
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			srv.Shutdown(context.Background())
-		}
+		<-ctx.Done()
+		srv.Shutdown(context.Background())
 	}()
 
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
