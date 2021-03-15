@@ -50,13 +50,12 @@ func run(ctx context.Context, config *config) error {
 	srv := http.NewServer(client, config.listenPort)
 
 	go func() {
-		<-ctx.Done()
-		srv.Shutdown(context.Background())
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "srv.ListenAndServe: err=%v\n", err)
+		}
 	}()
 
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		return err
-	}
+	<-ctx.Done()
+	return srv.Shutdown(context.Background())
 
-	return nil
 }
