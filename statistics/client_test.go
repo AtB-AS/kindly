@@ -56,3 +56,29 @@ func TestClient_Doer(t *testing.T) {
 		}
 	})
 }
+
+type retryDoer struct {
+	n int
+}
+
+func (d *retryDoer) Do(r *http.Request) (*http.Response, error) {
+	d.n++
+	status := http.StatusTooManyRequests
+	if d.n > 2 {
+		status = http.StatusOK
+	}
+	return &http.Response{StatusCode: status, Header: http.Header{"Content-Length": []string{"3"}, "Retry-After": []string{"0"}}, Body: io.NopCloser(bytes.NewReader([]byte("")))}, nil
+}
+
+func TestClientDoer_Retries(t *testing.T) {
+	doer := &retryDoer{}
+	client := statistics.NewClient(statistics.WithDoer(doer))
+
+	if _, err := client.UserMessages(context.Background(), nil); err != nil {
+		t.Errorf("UserMessages() err=%v", err)
+	}
+	fmt.Println(doer.n)
+	if doer.n != 3 {
+		t.Errorf("expected doer to be called 3 times")
+	}
+}

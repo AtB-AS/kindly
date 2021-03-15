@@ -349,7 +349,7 @@ func (e *Error) Body() []byte {
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprintf("statistics: errenous status from upstream %q", http.StatusText(e.StatusCode()))
+	return fmt.Sprintf("statistics: errenous status from upstream: %q", http.StatusText(e.StatusCode()))
 }
 
 func (c *Client) do(r *http.Request, v interface{}) error {
@@ -358,15 +358,32 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 	}
 	begin := time.Now()
 
-	resp, err := c.doer.Do(r)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	c.logger.Log("method", r.Method, "url", r.URL.String(), "code", resp.StatusCode, "took", time.Since(begin))
+	for {
+		resp, err := c.doer.Do(r)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		c.logger.Log("method", r.Method, "url", r.URL.String(), "code", resp.StatusCode, "took", time.Since(begin))
 
-	switch resp.StatusCode {
-	case http.StatusOK:
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				waitSeconds, err := strconv.Atoi(retryAfter)
+				if err != nil {
+					return newResponseError(resp)
+				}
+				select {
+				case <-r.Context().Done():
+					return r.Context().Err()
+				case <-time.After(time.Duration(waitSeconds) * time.Second):
+					continue
+				}
+			}
+			continue
+		} else if resp.StatusCode > 399 {
+			return newResponseError(resp)
+		}
+
 		w := responseWrapper{}
 		if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
 			return nil
@@ -376,12 +393,14 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 			return nil
 		}
 		return json.Unmarshal(w.Data, &v)
-	default:
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-
-		return &Error{statusCode: resp.StatusCode, body: body}
 	}
+}
+
+func newResponseError(resp *http.Response) error {
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return &Error{statusCode: resp.StatusCode, body: body}
 }
