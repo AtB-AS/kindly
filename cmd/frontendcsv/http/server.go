@@ -62,7 +62,7 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				temp := *f
 				temp.From = t
 				temp.To = t.Add(24 * time.Hour)
-				labels, err := client.ChatLabels(ctx, f)
+				labels, err := client.ChatLabels(ctx, &temp)
 				if err != nil {
 					return err
 				}
