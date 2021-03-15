@@ -289,10 +289,11 @@ func (c *Client) newRequest(ctx context.Context, endpoint string, query url.Valu
 		c.BaseURL = BaseURL
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/%s/%s?%s", c.BaseURL, c.BotID, endpoint, query.Encode()), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/%s/%s", c.BaseURL, c.BotID, endpoint), nil)
 	if err != nil {
 		return nil, err
 	}
+	req.URL.RawQuery = query.Encode()
 	req.Header.Set("Accept", "application/json")
 
 	return req, nil
