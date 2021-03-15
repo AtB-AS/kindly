@@ -58,6 +58,7 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 	m := mux.NewRouter()
 	m.Handle("/labels", &csvHandler{
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
+			w.Write("date", "count", "id", "text")
 			for t := f.From; f.To.Sub(t) > 0; t = t.Add(24 * time.Hour) {
 				temp := *f
 				temp.From = t
@@ -66,7 +67,6 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				if err != nil {
 					return err
 				}
-				w.Write("date", "count", "id", "text")
 				for _, label := range labels {
 					w.Write(formatTime(temp.From, f.Granularity), strconv.Itoa(label.Count), label.ID, label.Text)
 				}
