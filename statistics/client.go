@@ -379,7 +379,7 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 					continue
 				}
 			}
-			continue
+			return newResponseError(resp)
 		} else if resp.StatusCode > 399 {
 			return newResponseError(resp)
 		}
