@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -28,18 +27,19 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	cw := csv.NewWriter(w)
-	defer func() {
-		cw.Flush()
-		if err := cw.Error(); err != nil {
-			log.Printf("cw.Error() err=%v\n", err)
-		}
-	}()
-
 	if err := h.h(r.Context(), f, cw); err != nil {
-		log.Printf("handler: err=%v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	cw.Flush()
+	if err := cw.Error(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 }
 
 func NewServer(client *statistics.Client, port string) *http.Server {
