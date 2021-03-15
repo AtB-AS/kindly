@@ -10,6 +10,7 @@ import (
 	"github.com/atb-as/kindly/cmd/frontendcsv/http"
 	"github.com/atb-as/kindly/statistics"
 	"github.com/atb-as/kindly/statistics/auth"
+	"github.com/go-kit/kit/log"
 	"golang.org/x/oauth2"
 )
 
@@ -39,13 +40,13 @@ func main() {
 }
 
 func run(ctx context.Context, config *config) error {
-	client := &statistics.Client{
-		BotID: config.botID,
-		Doer: oauth2.NewClient(context.Background(), oauth2.ReuseTokenSource(nil, &auth.TokenSource{
+	client := statistics.NewClient(
+		statistics.WithDoer(oauth2.NewClient(context.Background(), oauth2.ReuseTokenSource(nil, &auth.TokenSource{
 			APIKey: config.apiKey,
 			BotID:  config.botID,
-		})),
-	}
+		}))),
+		statistics.WithLogger(log.NewLogfmtLogger(os.Stdout)))
+	client.BotID = config.botID
 
 	srv := http.NewServer(client, config.listenPort)
 

@@ -18,7 +18,42 @@ const BaseURL = "https://sage.kindly.ai/api/v1/stats/bot"
 type Client struct {
 	BotID   string
 	BaseURL string
-	Doer    Doer
+	logger  Logger
+	doer    Doer
+}
+
+func NewClient(opts ...ClientOption) *Client {
+	c := &Client{logger: &nopLogger{}, doer: http.DefaultClient}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
+}
+
+type ClientOption func(c *Client)
+
+func WithDoer(doer Doer) ClientOption {
+	return func(c *Client) {
+		c.doer = doer
+	}
+}
+
+func WithLogger(logger Logger) ClientOption {
+	return func(c *Client) {
+		c.logger = logger
+	}
+}
+
+type Logger interface {
+	Log(keyvals ...interface{}) error
+}
+
+type nopLogger struct {
+}
+
+func (l *nopLogger) Log(keyvals ...interface{}) error {
+	return nil
 }
 
 type Doer interface {
@@ -57,20 +92,21 @@ type Filter struct {
 	LanguageCodes []string
 }
 
+const dateLayout = "2006-01-02"
+
 func (f *Filter) Query() url.Values {
 	if f == nil {
 		return url.Values{}
 	}
 
 	q := url.Values{}
-	const layout = "2006-01-02"
 
 	if !f.From.IsZero() {
-		q.Add("from", f.From.Format(layout))
+		q.Add("from", f.From.Format(dateLayout))
 	}
 
 	if !f.To.IsZero() {
-		q.Add("to", f.To.Format(layout))
+		q.Add("to", f.To.Format(dateLayout))
 	}
 
 	if f.Granularity != Unspecified {
@@ -317,16 +353,16 @@ func (e *Error) Error() string {
 }
 
 func (c *Client) do(r *http.Request, v interface{}) error {
-	if c.Doer == nil {
-		c.Doer = http.DefaultClient
+	if c.doer == nil {
+		c.doer = http.DefaultClient
 	}
-
-	resp, err := c.Doer.Do(r)
+	begin := time.Now()
+	resp, err := c.doer.Do(r)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
+	c.logger.Log("method", r.Method, "url", r.URL.String(), "code", resp.StatusCode, "took", time.Since(begin))
 	if resp.StatusCode > 399 {
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
