@@ -28,7 +28,7 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/csv; encoding=utf-8")
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	cw := csv.NewWriter(w)
 	defer func() {
 		cw.Flush()
