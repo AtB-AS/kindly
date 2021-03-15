@@ -13,13 +13,22 @@ import (
 )
 
 type rowWriter interface {
-	Write([]string) error
+	Write(cols ...string) error
 }
 
 type csvHandler struct {
 	h func(ctx context.Context, f *statistics.Filter, w rowWriter) error
 }
 
+type csvRowWriter struct {
+	*csv.Writer
+}
+
+func (c *csvRowWriter) Write(cols ...string) error {
+	return c.Writer.Write(cols)
+}
+
+// ServeHTTP implements http.Handler.
 func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f, err := filterFromRequest(r)
 	if err != nil {
@@ -28,7 +37,7 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cw := csv.NewWriter(w)
-	if err := h.h(r.Context(), f, cw); err != nil {
+	if err := h.h(r.Context(), f, &csvRowWriter{cw}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -39,9 +48,9 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 }
 
+// NewServer returns a configured *http.Server that listens on 0.0.0.0:port.
 func NewServer(client *statistics.Client, port string) *http.Server {
 	m := mux.NewRouter()
 	m.Handle("/labels", &csvHandler{
@@ -51,9 +60,9 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				return err
 			}
 
-			w.Write([]string{"count", "id", "text"})
+			w.Write("count", "id", "text")
 			for _, label := range labels {
-				w.Write([]string{strconv.Itoa(label.Count), label.ID, label.Text})
+				w.Write(strconv.Itoa(label.Count), label.ID, label.Text)
 			}
 
 			return nil
@@ -66,9 +75,9 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				return err
 			}
 
-			w.Write([]string{"date", "count"})
+			w.Write("date", "count")
 			for _, msg := range messages {
-				w.Write([]string{msg.Date.Format("2006-01-02"), strconv.Itoa(msg.Count)})
+				w.Write(msg.Date.Format("2006-01-02"), strconv.Itoa(msg.Count))
 			}
 
 			return nil
@@ -81,9 +90,9 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				return err
 			}
 
-			w.Write([]string{"host", "path", "sessions", "messages"})
+			w.Write("host", "path", "sessions", "messages")
 			for _, page := range pages {
-				w.Write([]string{page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages)})
+				w.Write(page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages))
 			}
 
 			return nil
@@ -96,9 +105,9 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				return err
 			}
 
-			w.Write([]string{"date", "count"})
+			w.Write("date", "count")
 			for _, session := range sessions {
-				w.Write([]string{session.Date.Format("2006-01-02"), strconv.Itoa(session.Count)})
+				w.Write(session.Date.Format("2006-01-02"), strconv.Itoa(session.Count))
 			}
 
 			return nil
