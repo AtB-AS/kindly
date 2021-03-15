@@ -349,7 +349,7 @@ func (e *Error) Body() []byte {
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprintf("statistics: errenous status code %d", e.statusCode)
+	return fmt.Sprintf("statistics: errenous status from upstream %q", http.StatusText(e.StatusCode()))
 }
 
 func (c *Client) do(r *http.Request, v interface{}) error {
@@ -357,13 +357,26 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 		c.doer = http.DefaultClient
 	}
 	begin := time.Now()
+
 	resp, err := c.doer.Do(r)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	c.logger.Log("method", r.Method, "url", r.URL.String(), "code", resp.StatusCode, "took", time.Since(begin))
-	if resp.StatusCode > 399 {
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		w := responseWrapper{}
+		if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
+			return nil
+		}
+
+		if v == nil {
+			return nil
+		}
+		return json.Unmarshal(w.Data, &v)
+	default:
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return err
@@ -371,15 +384,4 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 
 		return &Error{statusCode: resp.StatusCode, body: body}
 	}
-
-	w := responseWrapper{}
-	if err := json.NewDecoder(resp.Body).Decode(&w); err != nil {
-		return nil
-	}
-
-	if v == nil {
-		return nil
-	}
-
-	return json.Unmarshal(w.Data, &v)
 }

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
@@ -36,7 +37,8 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cw := csv.NewWriter(w)
+	buf := bytes.Buffer{}
+	cw := csv.NewWriter(&buf)
 	if err := h.h(r.Context(), f, &csvRowWriter{cw}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -48,6 +50,7 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Write(buf.Bytes())
 }
 
 // NewServer returns a configured *http.Server that listens on 0.0.0.0:port.
@@ -55,16 +58,19 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 	m := mux.NewRouter()
 	m.Handle("/labels", &csvHandler{
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
-			labels, err := client.ChatLabels(ctx, f)
-			if err != nil {
-				return err
+			for t := f.From; f.To.Sub(t) > 0; t = t.Add(24 * time.Hour) {
+				temp := *f
+				temp.From = t
+				temp.To = t.Add(24 * time.Hour)
+				labels, err := client.ChatLabels(ctx, f)
+				if err != nil {
+					return err
+				}
+				w.Write("date", "count", "id", "text")
+				for _, label := range labels {
+					w.Write(formatTime(temp.From, f.Granularity), strconv.Itoa(label.Count), label.ID, label.Text)
+				}
 			}
-
-			w.Write("count", "id", "text")
-			for _, label := range labels {
-				w.Write(strconv.Itoa(label.Count), label.ID, label.Text)
-			}
-
 			return nil
 		},
 	})
@@ -77,7 +83,7 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 
 			w.Write("date", "count")
 			for _, msg := range messages {
-				w.Write(msg.Date.Format("2006-01-02"), strconv.Itoa(msg.Count))
+				w.Write(formatTime(msg.Date.Time, f.Granularity), strconv.Itoa(msg.Count))
 			}
 
 			return nil
@@ -85,16 +91,19 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 	})
 	m.Handle("/pages", &csvHandler{
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
-			pages, err := client.PageStatistics(ctx, f)
-			if err != nil {
-				return err
+			w.Write("date", "host", "path", "sessions", "messages")
+			for t := f.From; f.To.Sub(t) > 0; t = t.Add(24 * time.Hour) {
+				temp := *f
+				temp.From = t
+				temp.To = t.Add(24 * time.Hour)
+				pages, err := client.PageStatistics(ctx, &temp)
+				if err != nil {
+					return err
+				}
+				for _, page := range pages {
+					w.Write(formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages))
+				}
 			}
-
-			w.Write("host", "path", "sessions", "messages")
-			for _, page := range pages {
-				w.Write(page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages))
-			}
-
 			return nil
 		},
 	})
@@ -107,7 +116,7 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 
 			w.Write("date", "count")
 			for _, session := range sessions {
-				w.Write(session.Date.Format("2006-01-02"), strconv.Itoa(session.Count))
+				w.Write(formatTime(session.Date.Time, f.Granularity), strconv.Itoa(session.Count))
 			}
 
 			return nil
@@ -125,6 +134,14 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 	return s
 }
 
+func formatTime(t time.Time, g statistics.Granularity) string {
+	if g == statistics.Hour {
+		return t.Format("2006-01-02 15:04")
+	}
+
+	return t.Format("2006-01-02")
+}
+
 func respondErr(w http.ResponseWriter, msg string, code int) {
 	http.Error(w, msg, code)
 }
@@ -135,16 +152,17 @@ func filterFromRequest(r *http.Request) (*statistics.Filter, error) {
 	}
 
 	f := &statistics.Filter{
-		To:    time.Now(),
-		From:  time.Now().Add(-1 * 24 * time.Hour),
-		Limit: 10,
+		To:          time.Now(),
+		From:        time.Now().Add(-1 * 24 * time.Hour),
+		Limit:       10,
+		Granularity: statistics.Day,
 	}
 
 	from := r.Form.Get("from")
 	if from != "" {
 		fromDate, err := time.Parse("2006-01-02", from)
 		if err != nil {
-			return nil, fmt.Errorf("parsing query \"from\": %w", err)
+			return nil, fmt.Errorf("parsing query: \"from\": %w", err)
 		}
 		f.From = fromDate
 	}
@@ -153,7 +171,7 @@ func filterFromRequest(r *http.Request) (*statistics.Filter, error) {
 	if to != "" {
 		toDate, err := time.Parse("2006-01-02", to)
 		if err != nil {
-			return nil, fmt.Errorf("parsing query \"to\": %w", err)
+			return nil, fmt.Errorf("parsing query: \"to\": %w", err)
 		}
 		f.To = toDate
 	}
@@ -162,9 +180,21 @@ func filterFromRequest(r *http.Request) (*statistics.Filter, error) {
 	if strLim != "" {
 		lim, err := strconv.Atoi(strLim)
 		if err != nil {
-			return nil, fmt.Errorf("parsing query \"limit\": %w", err)
+			return nil, fmt.Errorf("parsing query: \"limit\": %w", err)
 		}
 		f.Limit = lim
+	}
+
+	if f.To.Equal(f.From) {
+		return nil, fmt.Errorf("parsing query: \"from\" and \"to\" are equal")
+	}
+
+	granularity := r.Form.Get("granularity")
+	if granularity != "" {
+		switch granularity {
+		case "hour":
+			f.Granularity = statistics.Hour
+		}
 	}
 
 	return f, nil
