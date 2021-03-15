@@ -1,11 +1,11 @@
 package http
 
 import (
-	"bytes"
 	"context"
 	"encoding/csv"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -14,11 +14,12 @@ import (
 )
 
 type rowWriter interface {
-	Write(cols ...string) error
+	WriteAll(rows [][]string) error
 }
 
 type csvHandler struct {
-	h func(ctx context.Context, f *statistics.Filter, w rowWriter) error
+	hdr []string
+	h   func(ctx context.Context, f *statistics.Filter, w rowWriter) error
 }
 
 type csvRowWriter struct {
@@ -37,29 +38,29 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buf := bytes.Buffer{}
-	cw := csv.NewWriter(&buf)
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	cw := csv.NewWriter(w)
+	cw.Write(h.hdr)
+
 	if err := h.h(r.Context(), f, &csvRowWriter{cw}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Fprintf(os.Stderr, "handler: err=%v\n", err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	cw.Flush()
 	if err := cw.Error(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Fprintf(os.Stderr, "handler: flush: err=%v\n", err)
 		return
 	}
-	w.Write(buf.Bytes())
 }
 
 // NewServer returns a configured *http.Server that listens on 0.0.0.0:port.
 func NewServer(client *statistics.Client, port string) *http.Server {
 	m := mux.NewRouter()
 	m.Handle("/labels", &csvHandler{
+		hdr: []string{"date", "count", "id", "text"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
-			w.Write("date", "count", "id", "text")
-			for t := f.From; f.To.Sub(t) > 0; t = t.Add(24 * time.Hour) {
+			for t := f.From; t.Before(f.To); t = t.Add(24 * time.Hour) {
 				temp := *f
 				temp.From = t
 				temp.To = t.Add(24 * time.Hour)
@@ -67,32 +68,38 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				if err != nil {
 					return err
 				}
+
+				out := make([][]string, 0, f.Limit)
 				for _, label := range labels {
-					w.Write(formatTime(temp.From, f.Granularity), strconv.Itoa(label.Count), label.ID, label.Text)
+					out = append(out, []string{formatTime(temp.From, f.Granularity), strconv.Itoa(label.Count), label.ID, label.Text})
+				}
+				if err := w.WriteAll(out); err != nil {
+					return err
 				}
 			}
 			return nil
 		},
 	})
 	m.Handle("/messages", &csvHandler{
+		hdr: []string{"date", "count"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
 			messages, err := client.UserMessages(ctx, f)
 			if err != nil {
 				return err
 			}
 
-			w.Write("date", "count")
+			out := make([][]string, 0, f.Limit)
 			for _, msg := range messages {
-				w.Write(formatTime(msg.Date.Time, f.Granularity), strconv.Itoa(msg.Count))
+				out = append(out, []string{formatTime(msg.Date.Time, f.Granularity), strconv.Itoa(msg.Count)})
 			}
 
-			return nil
+			return w.WriteAll(out)
 		},
 	})
 	m.Handle("/pages", &csvHandler{
+		hdr: []string{"date", "host", "path", "sessions", "messages"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
-			w.Write("date", "host", "path", "sessions", "messages")
-			for t := f.From; f.To.Sub(t) > 0; t = t.Add(24 * time.Hour) {
+			for t := f.From; t.Before(f.To); t = t.Add(24 * time.Hour) {
 				temp := *f
 				temp.From = t
 				temp.To = t.Add(24 * time.Hour)
@@ -100,35 +107,39 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 				if err != nil {
 					return err
 				}
+
+				out := make([][]string, 0, f.Limit)
 				for _, page := range pages {
-					w.Write(formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages))
+					out = append(out, []string{formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages)})
+				}
+				if err := w.WriteAll(out); err != nil {
+					return err
 				}
 			}
 			return nil
 		},
 	})
 	m.Handle("/sessions", &csvHandler{
+		hdr: []string{"date", "count"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
 			sessions, err := client.ChatSessions(ctx, f)
 			if err != nil {
 				return err
 			}
 
-			w.Write("date", "count")
+			out := make([][]string, 0, f.Limit)
 			for _, session := range sessions {
-				w.Write(formatTime(session.Date.Time, f.Granularity), strconv.Itoa(session.Count))
+				out = append(out, []string{formatTime(session.Date.Time, f.Granularity), strconv.Itoa(session.Count)})
 			}
 
-			return nil
+			return w.WriteAll(out)
 		},
 	})
 
 	s := &http.Server{
-		Addr:         ":" + port,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  30 * time.Second,
-		Handler:      m,
+		Addr:        ":" + port,
+		ReadTimeout: 5 * time.Second,
+		Handler:     m,
 	}
 
 	return s
