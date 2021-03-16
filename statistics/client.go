@@ -117,6 +117,10 @@ func (f *Filter) Query() url.Values {
 		q.Add("limit", strconv.Itoa(f.Limit))
 	}
 
+	for _, source := range f.Sources {
+		q.Add("sources[]", source)
+	}
+
 	return q
 }
 

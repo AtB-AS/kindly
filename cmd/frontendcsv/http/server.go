@@ -58,80 +58,94 @@ func (h *csvHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func NewServer(client *statistics.Client, port string) *http.Server {
 	m := mux.NewRouter()
 	m.Handle("/labels", &csvHandler{
-		hdr: []string{"date", "count", "id", "text"},
+		hdr: []string{"date", "count", "id", "text", "source"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
 			for t := f.From; t.Before(f.To); t = t.Add(24 * time.Hour) {
-				temp := *f
-				temp.From = t
-				temp.To = t.Add(24 * time.Hour)
-				labels, err := client.ChatLabels(ctx, &temp)
-				if err != nil {
-					return err
-				}
+				for _, source := range f.Sources {
+					temp := *f
+					temp.From = t
+					temp.To = t.Add(24 * time.Hour)
+					temp.Sources = []string{source}
+					labels, err := client.ChatLabels(ctx, &temp)
+					if err != nil {
+						return err
+					}
 
-				out := make([][]string, 0, f.Limit)
-				for _, label := range labels {
-					out = append(out, []string{formatTime(temp.From, f.Granularity), strconv.Itoa(label.Count), label.ID, label.Text})
-				}
-				if err := w.WriteAll(out); err != nil {
-					return err
+					out := make([][]string, 0, f.Limit)
+					for _, label := range labels {
+						out = append(out, []string{formatTime(temp.From, f.Granularity), strconv.Itoa(label.Count), label.ID, label.Text, source})
+					}
+					if err := w.WriteAll(out); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
 		},
 	})
 	m.Handle("/messages", &csvHandler{
-		hdr: []string{"date", "count"},
+		hdr: []string{"date", "count", "source"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
-			messages, err := client.UserMessages(ctx, f)
-			if err != nil {
-				return err
-			}
-
 			out := make([][]string, 0, f.Limit)
-			for _, msg := range messages {
-				out = append(out, []string{formatTime(msg.Date.Time, f.Granularity), strconv.Itoa(msg.Count)})
+			for _, source := range f.Sources {
+				temp := *f
+				temp.Sources = []string{source}
+				messages, err := client.UserMessages(ctx, &temp)
+
+				if err != nil {
+					return err
+				}
+
+				for _, msg := range messages {
+					out = append(out, []string{formatTime(msg.Date.Time, f.Granularity), strconv.Itoa(msg.Count), source})
+				}
 			}
 
 			return w.WriteAll(out)
 		},
 	})
 	m.Handle("/pages", &csvHandler{
-		hdr: []string{"date", "host", "path", "sessions", "messages"},
+		hdr: []string{"date", "host", "path", "sessions", "messages", "source"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
 			for t := f.From; t.Before(f.To); t = t.Add(24 * time.Hour) {
-				temp := *f
-				temp.From = t
-				temp.To = t.Add(24 * time.Hour)
-				pages, err := client.PageStatistics(ctx, &temp)
-				if err != nil {
-					return err
-				}
+				for _, source := range f.Sources {
+					temp := *f
+					temp.From = t
+					temp.To = t.Add(24 * time.Hour)
+					temp.Sources = []string{source}
+					pages, err := client.PageStatistics(ctx, &temp)
+					if err != nil {
+						return err
+					}
 
-				out := make([][]string, 0, f.Limit)
-				for _, page := range pages {
-					out = append(out, []string{formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages)})
-				}
-				if err := w.WriteAll(out); err != nil {
-					return err
+					out := make([][]string, 0, f.Limit)
+					for _, page := range pages {
+						out = append(out, []string{formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages), source})
+					}
+					if err := w.WriteAll(out); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
 		},
 	})
 	m.Handle("/sessions", &csvHandler{
-		hdr: []string{"date", "count"},
+		hdr: []string{"date", "count", "source"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
-			sessions, err := client.ChatSessions(ctx, f)
-			if err != nil {
-				return err
-			}
-
 			out := make([][]string, 0, f.Limit)
-			for _, session := range sessions {
-				out = append(out, []string{formatTime(session.Date.Time, f.Granularity), strconv.Itoa(session.Count)})
-			}
+			for _, source := range f.Sources {
+				temp := *f
+				temp.Sources = []string{source}
+				sessions, err := client.ChatSessions(ctx, &temp)
+				if err != nil {
+					return err
+				}
 
+				for _, session := range sessions {
+					out = append(out, []string{formatTime(session.Date.Time, f.Granularity), strconv.Itoa(session.Count), source})
+				}
+			}
 			return w.WriteAll(out)
 		},
 	})
@@ -206,6 +220,16 @@ func filterFromRequest(r *http.Request) (*statistics.Filter, error) {
 		case "hour":
 			f.Granularity = statistics.Hour
 		}
+	}
+
+	sources, ok := r.Form["sources"]
+	if ok {
+		for _, source := range sources {
+			f.Sources = append(f.Sources, source)
+		}
+	}
+	if len(f.Sources) == 0 {
+		f.Sources = append(f.Sources, "web", "facebook")
 	}
 
 	return f, nil
