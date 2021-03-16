@@ -105,26 +105,23 @@ func NewServer(client *statistics.Client, port string) *http.Server {
 		},
 	})
 	m.Handle("/pages", &csvHandler{
-		hdr: []string{"date", "host", "path", "sessions", "messages", "source"},
+		hdr: []string{"date", "host", "path", "sessions", "messages"},
 		h: func(ctx context.Context, f *statistics.Filter, w rowWriter) error {
 			for t := f.From; t.Before(f.To); t = t.Add(24 * time.Hour) {
-				for _, source := range f.Sources {
-					temp := *f
-					temp.From = t
-					temp.To = t.Add(24 * time.Hour)
-					temp.Sources = []string{source}
-					pages, err := client.PageStatistics(ctx, &temp)
-					if err != nil {
-						return err
-					}
-
-					out := make([][]string, 0, f.Limit)
-					for _, page := range pages {
-						out = append(out, []string{formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages), source})
-					}
-					if err := w.WriteAll(out); err != nil {
-						return err
-					}
+				temp := *f
+				temp.From = t
+				temp.To = t.Add(24 * time.Hour)
+				pages, err := client.PageStatistics(ctx, &temp)
+				fmt.Println(pages[0].Host)
+				if err != nil {
+					return err
+				}
+				out := make([][]string, 0, f.Limit)
+				for _, page := range pages {
+					out = append(out, []string{formatTime(temp.From, f.Granularity), page.Host, page.Path, strconv.Itoa(page.Sessions), strconv.Itoa(page.Messages)})
+				}
+				if err := w.WriteAll(out); err != nil {
+					return err
 				}
 			}
 			return nil
