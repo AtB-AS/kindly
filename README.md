@@ -15,4 +15,4 @@ Serves CSV from the kindly.ai Statistics API for easy consumption in Power BI.
 * `from`: from date (format: `2006-01-02`, default: `now - 24 hours`)
 * `to`: to date (format: `2006-01-02`, default: `now`)
 * `granularity`: hour or day (default: `day`)
-* `sources`: sources (default: `web and facebook`, example: `?sources=web&sources=facebook`)
+* `sources`: sources (default: `web`, `facebook`, example: `?sources=web&sources=facebook`)
