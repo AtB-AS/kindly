@@ -28,8 +28,8 @@ func TestClient_Doer(t *testing.T) {
 			To:   time.Date(2021, 2, 2, 0, 0, 0, 0, time.UTC),
 		}
 		c := statistics.NewClient(statistics.WithDoer(doerFunc(func(r *http.Request) (*http.Response, error) {
-			wantURL := fmt.Sprintf("%s/%s/chatlabels/added?from=2021-02-01&to=2021-02-02", statistics.BaseURL, botID)
-			if r.URL.String() != wantURL {
+			wantURL := fmt.Sprintf("%s/%s/chatlabels/added", statistics.BaseURL, botID)
+			if !strings.HasPrefix(r.URL.String(), wantURL) {
 				t.Errorf("got URL %q, want %q", r.URL.String(), wantURL)
 			}
 
