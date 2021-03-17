@@ -178,6 +178,7 @@ func filterFromRequest(r *http.Request) (*statistics.Filter, error) {
 		From:        time.Now().Add(-1 * 24 * time.Hour),
 		Limit:       10,
 		Granularity: statistics.Day,
+		Sources:     []string{"facebook", "web"},
 	}
 
 	from := r.Form.Get("from")
@@ -219,14 +220,8 @@ func filterFromRequest(r *http.Request) (*statistics.Filter, error) {
 		}
 	}
 
-	sources, ok := r.Form["sources"]
-	if ok {
-		for _, source := range sources {
-			f.Sources = append(f.Sources, source)
-		}
-	}
-	if len(f.Sources) == 0 {
-		f.Sources = append(f.Sources, "web", "facebook")
+	if sources, ok := r.Form["sources"]; ok {
+		f.Sources = sources
 	}
 
 	return f, nil
