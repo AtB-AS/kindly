@@ -101,6 +101,10 @@ func (f *Filter) Query() url.Values {
 
 	q := url.Values{}
 
+	if f.Timezone == "" {
+		q.Add("tz", "Europe/Oslo")
+	}
+
 	if !f.From.IsZero() {
 		q.Add("from", f.From.Format(dateLayout))
 	}
