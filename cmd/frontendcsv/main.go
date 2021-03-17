@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/atb-as/kindly/cmd/frontendcsv/http"
 	"github.com/atb-as/kindly/statistics"
@@ -57,6 +58,9 @@ func run(ctx context.Context, config *config) error {
 	}()
 
 	<-ctx.Done()
-	return srv.Shutdown(context.Background())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return srv.Shutdown(ctx)
 
 }
