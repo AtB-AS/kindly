@@ -77,7 +77,7 @@ func TestClientDoer_Retries(t *testing.T) {
 	if _, err := client.UserMessages(context.Background(), nil); err != nil {
 		t.Errorf("UserMessages() err=%v", err)
 	}
-	fmt.Println(doer.n)
+
 	if doer.n != 3 {
 		t.Errorf("expected doer to be called 3 times")
 	}
