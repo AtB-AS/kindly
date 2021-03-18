@@ -348,20 +348,15 @@ func (c *Client) newRequest(ctx context.Context, endpoint string, query url.Valu
 type Error struct {
 	statusCode int
 	body       []byte
-}
-
-type retry struct{}
-
-func (e *retry) Error() string {
-	return "retry"
-}
-
-func (e *retry) retryable() bool {
-	return true
+	hdr        http.Header
 }
 
 func (e *Error) StatusCode() int {
 	return e.statusCode
+}
+
+func (e *Error) Headers() http.Header {
+	return e.hdr
 }
 
 func (e *Error) Body() []byte {
@@ -372,14 +367,24 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("statistics: errenous status from upstream: %q", http.StatusText(e.StatusCode()))
 }
 
-func isRetryable(err error) bool {
-	if retry, ok := err.(interface {
-		retryable() bool
-	}); ok && retry.retryable() {
-		return true
+func isRetryable(err error) (bool, int) {
+	if retry, ok := err.(*Error); ok {
+		switch retry.statusCode {
+		case http.StatusTooManyRequests:
+			if waitSeconds := retry.hdr.Get("Retry-After"); waitSeconds != "" {
+				wait, err := strconv.Atoi(waitSeconds)
+				if err != nil {
+					return false, 0
+				}
+				return true, wait
+			}
+		case http.StatusServiceUnavailable:
+			return true, 1
+		default:
+			return false, 0
+		}
 	}
-
-	return false
+	return false, 0
 }
 
 func (c *Client) do(r *http.Request, v interface{}) error {
@@ -388,22 +393,29 @@ func (c *Client) do(r *http.Request, v interface{}) error {
 	}
 
 	for {
-		resp, err := c.execute(r)
+		body, err := c.execute(r)
 		if err != nil {
-			if isRetryable(err) {
+			retryable, waitSeconds := isRetryable(err)
+			if !retryable {
+				return err
+			}
+			select {
+			case <-r.Context().Done():
+				return r.Context().Err()
+			case <-time.After(time.Duration(waitSeconds) * time.Second):
 				continue
 			}
-			return err
 		}
 
 		w := responseWrapper{}
-		if err := json.NewDecoder(resp).Decode(&w); err != nil {
+		if err := json.NewDecoder(body).Decode(&w); err != nil {
 			return nil
 		}
 
 		if v == nil {
 			return nil
 		}
+
 		return json.Unmarshal(w.Data, &v)
 	}
 }
@@ -424,21 +436,7 @@ func (c *Client) execute(r *http.Request) (io.Reader, error) {
 		return nil, err
 	}
 
-	if resp.StatusCode == http.StatusTooManyRequests {
-		if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
-			waitSeconds, err := strconv.Atoi(retryAfter)
-			if err != nil {
-				return nil, newResponseError(resp)
-			}
-			select {
-			case <-r.Context().Done():
-				return nil, r.Context().Err()
-			case <-time.After(time.Duration(waitSeconds) * time.Second):
-				return nil, &retry{}
-			}
-		}
-		return nil, newResponseError(resp)
-	} else if resp.StatusCode > 399 {
+	if resp.StatusCode > 399 {
 		return nil, newResponseError(resp)
 	}
 
@@ -451,5 +449,5 @@ func newResponseError(resp *http.Response) error {
 		return err
 	}
 
-	return &Error{statusCode: resp.StatusCode, body: body}
+	return &Error{hdr: resp.Header.Clone(), statusCode: resp.StatusCode, body: body}
 }
